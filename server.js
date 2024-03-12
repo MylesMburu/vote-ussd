@@ -8,13 +8,15 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Load models
-const Team = require('./models/Team');
-const Vote = require('./models/Vote');
+const Team = require('./models/team');
+const Vote = require('./models/vote');
 
 dotenv.config();
 
+const url = process.env.MONGO_URI;
+
 //connect to mongodb
-mongoose.connect(url, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(url);
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -66,12 +68,24 @@ app.post('/ussd', async (req, res) => {
             if (!team) {
                 response = `END Invalid team number`;
             } else {
-                const newVote = new Vote({ teamId: team.teamId, voterPhone: phoneNumber });
-                await newVote.save();
-                response = `END Thank you for voting for Team ${team.name}`;
+                // Check if the voter has already voted for this team
+                const existingVote = await Vote.findOne({ teamId: team.teamId, voterPhone: phoneNumber });
+                if (existingVote) {
+                    response = `END You have already voted for Team ${team.name}`;
+                } else {
+                    // Check total number of votes cast by this voter
+                    const voteCount = await Vote.countDocuments({ voterPhone: phoneNumber });
+                    if (voteCount >= 3) {
+                        response = `END You have reached the limit of 3 votes`;
+                    } else {
+                        const newVote = new Vote({ teamId: team.teamId, voterPhone: phoneNumber });
+                        await newVote.save();
+                        response = `END Thank you for voting for Team ${team.name}`;
+                    }
+                }
             }
         } catch (error) {
-            response = `END Failed to record your vote`;
+            response = `END Failed to record your vote`;    
         }
     } else {
         response = 'END Invalid input. Please try again';
